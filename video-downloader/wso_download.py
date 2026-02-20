@@ -4,6 +4,7 @@ Downloads Wiener Staatsoper streams by name or URL.
 Fetches rich metadata from the performa.intio.tv API (no auth needed).
 
 Usage:
+    python wso_download.py --list                   [year]
     python wso_download.py "Luisa Miller"           [output-dir]
     python wso_download.py "Rosenkavalier" 2020     [output-dir]
     python wso_download.py https://play.wiener-staatsoper.at/event/<uuid>  [output-dir]
@@ -23,9 +24,14 @@ PAGE_BASE = "https://play.wiener-staatsoper.at/event"
 
 
 def fetch_all_events() -> list[dict]:
-    url = f"{API_BASE}/events/?platform=web&organization=vso&page_size=500"
-    with urllib.request.urlopen(url) as r:
-        return json.loads(r.read())["results"]
+    url = f"{API_BASE}/events/?platform=web&organization=vso&page_size=100"
+    results = []
+    while url:
+        with urllib.request.urlopen(url) as r:
+            data = json.loads(r.read())
+        results.extend(data["results"])
+        url = data.get("next")
+    return results
 
 
 def fetch_event(event_id: str) -> dict:
@@ -125,12 +131,35 @@ def download(m3u8_url: str, filename: str, output_dir: str = "~/Downloads") -> N
     ], check=True)
 
 
+def list_events(year: str | None = None) -> None:
+    events = fetch_all_events()
+    if year:
+        events = [e for e in events if (e.get("begin_time") or "").startswith(year)]
+    events.sort(key=lambda e: e.get("begin_time", ""), reverse=True)
+
+    current_year = None
+    for e in events:
+        date = (e.get("begin_time") or "")[:10]
+        y = date[:4]
+        if y != current_year:
+            current_year = y
+            print(f"\n── {y} ──────────────────────────────────────")
+        print(f"  {date}  {e['title']:<40}  {e['id']}")
+    print(f"\n{len(events)} events total")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
-        print("Usage: python wso_download.py <name-or-url> [year] [output-dir]")
+        print("Usage: python wso_download.py --list [year]")
+        print("       python wso_download.py <name-or-url> [year] [output-dir]")
         sys.exit(1)
 
     args = sys.argv[1:]
+
+    if args[0] == "--list":
+        year = args[1] if len(args) > 1 else None
+        list_events(year)
+        sys.exit(0)
     out_dir = "~/Downloads"
 
     # Parse args: url or query, optional 4-digit year, optional output dir
