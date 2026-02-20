@@ -122,23 +122,38 @@ def do_login() -> None:
     print(f"Session saved to {SESSION_FILE}")
 
 
-def find_m3u8(page_url: str) -> str | None:
-    found = []
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=False)
-        storage = str(SESSION_FILE) if SESSION_FILE.exists() else None
-        if not storage:
-            print("No saved session — run with --login first if the stream requires authentication.")
-        context = browser.new_context(storage_state=storage)
-        page = context.new_page()
-        page.on("request", lambda r: found.append(r.url) if ".m3u8" in r.url else None)
+def get_token() -> str | None:
+    if not SESSION_FILE.exists():
+        return None
+    session = json.loads(SESSION_FILE.read_text())
+    for origin in session.get("origins", []):
+        for item in origin.get("localStorage", []):
+            if item["name"] == "token":
+                return item["value"]
+    return None
 
-        print(f"\nOpening {page_url} ...")
-        page.goto(page_url, wait_until="networkidle", timeout=30000)
-        page.wait_for_timeout(6000)
-        browser.close()
 
-    return found[0] if found else None
+def get_stream_url(event_id: str) -> str | None:
+    token = get_token()
+    if not token:
+        print("No saved session — run with --login first.")
+        return None
+
+    req = urllib.request.Request(
+        f"{API_BASE}/events/{event_id}/streams/",
+        headers={"Authorization": f"Token {token}"},
+    )
+    with urllib.request.urlopen(req) as r:
+        data = json.loads(r.read())
+
+    streams = data.get("streams", [])
+    if not streams:
+        print("No streams found for this event.")
+        return None
+
+    # Prefer HLS
+    hls = [s for s in streams if s.get("type") == "hls"]
+    return (hls or streams)[0]["url"]
 
 
 def download(m3u8_url: str, filename: str, output_dir: str = "~/Downloads") -> None:
@@ -189,11 +204,12 @@ if __name__ == "__main__":
 
     # Parse args: url or query, optional 4-digit year, optional output dir
     if args[0].startswith("http"):
-        page_url = args[0]
         out_dir = args[1] if len(args) > 1 else out_dir
-        # Extract event ID from URL to get metadata
-        m = re.search(r'/event/([0-9a-f-]{36})', page_url)
-        event = fetch_event(m.group(1)) if m else {}
+        m = re.search(r'([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})', args[0])
+        if not m:
+            print("ERROR: Could not extract event UUID from URL")
+            sys.exit(1)
+        event = fetch_event(m.group(1))
     else:
         year = next((a for a in args[1:] if re.match(r'^\d{4}$', a)), None)
         out_dir = next((a for a in args[1:] if not re.match(r'^\d{4}$', a)), out_dir)
@@ -209,11 +225,11 @@ if __name__ == "__main__":
     filename = format_metadata(event)
     print(f"\nOutput file: {filename}.mp4")
 
-    m3u8 = find_m3u8(page_url)
+    m3u8 = get_stream_url(event["id"])
     if not m3u8:
-        print("ERROR: No m3u8 stream found. Make sure you're logged in in the browser window.")
         sys.exit(1)
 
-    print(f"Stream found, downloading...")
+    print(f"Stream URL: {m3u8}")
+    print(f"Downloading...")
     download(m3u8, filename, out_dir)
     print("Done!")
