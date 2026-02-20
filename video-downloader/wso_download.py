@@ -4,6 +4,7 @@ Downloads Wiener Staatsoper streams by name or URL.
 Fetches rich metadata from the performa.intio.tv API (no auth needed).
 
 Usage:
+    python wso_download.py --login                  # save session once
     python wso_download.py --list                   [year]
     python wso_download.py "Luisa Miller"           [output-dir]
     python wso_download.py "Rosenkavalier" 2020     [output-dir]
@@ -21,6 +22,7 @@ from playwright.sync_api import sync_playwright
 
 API_BASE = "https://live.performa.intio.tv/api/v1"
 PAGE_BASE = "https://play.wiener-staatsoper.at/event"
+SESSION_FILE = Path(__file__).parent / ".wso_session.json"
 
 
 def fetch_all_events() -> list[dict]:
@@ -105,12 +107,31 @@ def print_event_info(event: dict) -> None:
         print(f"{role+':':<12} {', '.join(people)}")
 
 
+def do_login() -> None:
+    """Open browser for manual login and save the session."""
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=False)
+        context = browser.new_context()
+        page = context.new_page()
+        page.goto("https://play.wiener-staatsoper.at", wait_until="networkidle", timeout=30000)
+        print("\nLog in to Wiener Staatsoper in the browser window.")
+        print("Press Enter here when done...")
+        input()
+        context.storage_state(path=str(SESSION_FILE))
+        browser.close()
+    print(f"Session saved to {SESSION_FILE}")
+
+
 def find_m3u8(page_url: str) -> str | None:
     found = []
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=False)
-        page = browser.new_page()
-        page.on("request", lambda r: found.append(r.url) if "master.m3u8" in r.url or ".m3u8" in r.url else None)
+        storage = str(SESSION_FILE) if SESSION_FILE.exists() else None
+        if not storage:
+            print("No saved session — run with --login first if the stream requires authentication.")
+        context = browser.new_context(storage_state=storage)
+        page = context.new_page()
+        page.on("request", lambda r: found.append(r.url) if ".m3u8" in r.url else None)
 
         print(f"\nOpening {page_url} ...")
         page.goto(page_url, wait_until="networkidle", timeout=30000)
@@ -155,6 +176,10 @@ if __name__ == "__main__":
         sys.exit(1)
 
     args = sys.argv[1:]
+
+    if args[0] == "--login":
+        do_login()
+        sys.exit(0)
 
     if args[0] == "--list":
         year = args[1] if len(args) > 1 else None
