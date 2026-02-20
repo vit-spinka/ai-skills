@@ -125,3 +125,23 @@ python ~/pers-repos/ai-skills/video-downloader/met_download.py https://ondemand.
 
 **Requirements:** `pip install playwright && playwright install chromium`
 
+## Wiener Staatsoper (play.wiener-staatsoper.at)
+
+Script at `~/pers-repos/ai-skills/video-downloader/wso_download.py`.
+
+```bash
+python wso_download.py "Luisa Miller"             # most recent match
+python wso_download.py "Rosenkavalier" 2020        # filter by year
+python wso_download.py https://play.wiener-staatsoper.at/event/<uuid>
+```
+
+**Metadata API** (no auth): `https://live.performa.intio.tv/api/v1/events/?platform=web&organization=vso&page_size=500`
+- 473+ events going back to 2020
+- Returns: title, date, conductor, full cast, VOD availability window
+- Individual event: `https://live.performa.intio.tv/api/v1/events/<uuid>/`
+- Event UUID is in the page URL: `play.wiener-staatsoper.at/event/<uuid>`
+
+**Filename format:** `Title - YYYY-MM-DD - Conductor.mp4` (dedup-safe)
+
+**Stream access:** Requires login in the Playwright browser window. Old stream URLs keep working; find old UUIDs via archive.org snapshots of `play.wiener-staatsoper.at`.
+
