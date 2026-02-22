@@ -55,12 +55,14 @@ Fetch using `notion-fetch`. Extract:
 
 Travel Hub page ID: `30e1c31b-7fca-81eb-b993-c3a6c1c20893`
 
-Get list of child trip pages, then fetch **each one**. For each trip page:
+⚠️ Always re-fetch the Travel Hub index fresh at the start of every run — never rely on a previously known list of trips. New trips may have been added since the last run. Fetch the parent page first to get the current child page list, then fetch **each child page** individually. For each trip page:
 
 1. Parse the trip date from the title (e.g. "May 7–10", "Aug 18–26").
-2. Count **open todos** (`[ ]`) vs **done todos** (`[x]`).
+2. Count **open todos** (`[ ]`) vs **done todos** (`[x]`). Only `[ ]` items are open — `[x]` items are DONE and must NEVER appear in the email.
 3. Flag as **urgent** if it has open todos AND the trip is within 90 days.
 4. Identify the **next/soonest upcoming trip** (by start date).
+
+⚠️ CRITICAL: When listing open todos in the email, only include items marked `[ ]`. Never include `[x]` items — they are completed. Double-check by re-reading the raw page content before composing.
 
 In the email:
 - **Next trip** section: name, dates, open todo count, and list the open todos.
@@ -84,6 +86,8 @@ Dates are stored as Czech-format strings (`"27.6.2024"`, `"8.5.2026"`, etc.) —
 
 ⚠️ IMPORTANT: The end date (Sunday) is INCLUSIVE. After filtering, always do a final explicit check: "are there any events on exactly end_of_week?" to avoid missing boundary-day items.
 
+⚠️ IMPORTANT: ALL events in the window must appear in the theatre section of the email — including local venues (Turnov, Liberec, Praha kino, ND, SO, etc.). Do NOT silently skip any row that falls within the date range. After composing the theatre section, count the events and cross-check against your filtered list to make sure nothing is missing.
+
 Fields to display: date, day of week (`den_tydne`), venue (`misto`), performance (`program`), time (`pozn_2`), who (`kdo`), tickets booked (`listky` — true/false).
 
 ---
@@ -99,7 +103,7 @@ Map BigQuery `misto` values to database `City` options:
 - "Berlin DO" → "Berlin"
 - "Leipzig" / "Lipsko GHO" → "Leipzig"
 - "Verona" → "Verona"
-- Prague-based venues (Praha kino, ND, Turnov, SO, Liberec, etc.): skip — no day-trip ideas needed
+- Local/Prague-based venues (Praha kino, ND, Turnov, SO, Liberec, etc.): skip day-trip ideas, but STILL include the event in the theatre section of the email
 
 For each matched city, fetch ONLY items where Status = "Want to visit" — explicitly exclude "Visited" items. Group by category. Keep it brief — 3–5 highlights per city.
 
